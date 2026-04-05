@@ -139,7 +139,7 @@ const maxFL=fData.reduce((a,f)=>a+f.slAmt,0);
 const hW=state.history.filter(h=>h.pnl>0).length,hT=state.history.length;
 const wr=hT>0?hW/hT*100:0;
 
-let h=`<div class="header"><div class="header-row"><div><div class="logo">MAX<span>S</span><span class="logo-sub">Portfolio Manager v2</span></div><div class="subtitle">Quản trị danh mục đầu tư — An Niêm</div></div><div style="display:flex;gap:8px;align-items:center"><button class="btn-fetch" onclick="fetchPrices()" ${state.loading?'disabled':''}>${state.loading?'⏳ Đang tải...':'🔄 Cập nhật giá'}</button>${state.lastFetch?`<span class="last-fetch">Lần cuối: ${state.lastFetch}</span>`:''}</div></div></div>`;
+let h=`<div class="header"><div class="header-row"><div><div class="logo">MAX<span>S</span><span class="logo-sub">Portfolio Manager v2</span></div><div class="subtitle">Quản trị danh mục đầu tư — An Niêm</div></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn-fetch" onclick="fetchPrices()" ${state.loading?'disabled':''}>${state.loading?'⏳ Đang tải...':'🔄 Cập nhật giá'}</button><button class="btn-fetch" style="background:#3b82f6" onclick="loadFromCloud()">☁️ Tải từ Cloud</button><button class="btn-fetch" style="background:#10b981" onclick="exportData()">📥 Backup</button><button class="btn-fetch" style="background:#8b5cf6" onclick="importData()">📤 Import</button><span id="sync-badge" style="font-size:10px;color:#64748b">⏸ Chưa đồng bộ</span>${state.lastFetch?`<span class="last-fetch">Giá: ${state.lastFetch}</span>`:''}</div></div></div>`;
 h+=`<div class="tabs">${["dashboard","spot","future","lessons"].map(t=>`<button class="tab${T===t?' active':''}" onclick="state.tab='${t}';render()">${{dashboard:'📊 Dashboard',spot:'💎 Spot Dài Hạn',future:'⚡ Future',lessons:'📝 Đúc kết'}[t]}</button>`).join('')}</div>`;
 h+=`<div class="container">`;
 
@@ -259,13 +259,132 @@ document.getElementById("app").innerHTML=h;
 function sellSpot(i){const s=calcSpot(state.spots[i]);if(s.avg===0)return;const exit=s.sell>0?s.sell:s.cp;const pnl=s.qty*(exit-s.avg);const pnlPct=s.cost>0?(pnl/s.cost)*100:0;state.history.push({id:nid(),type:"Spot",coin:s.coin,entry:s.avg,exit,pnl,pnlPct,date:new Date().toLocaleDateString("vi-VN"),dir:"Long"});state.spots[i].st="Đã bán";render()}
 function closeFut(i){const f=calcFut(state.futures[i]);if(f.entry===0)return;const exit=f.sell>0?f.sell:f.cp;const pnl=f.qty>0?f.qty*(exit-f.entry)*(f.dir==="Long"?1:-1):((exit-f.entry)/f.entry)*f.posSize*(f.dir==="Long"?1:-1);const pnlPct=f.capU>0?(pnl/f.capU)*100:0;state.history.push({id:nid(),type:"Future",coin:f.coin,entry:f.entry,exit,pnl,pnlPct,date:new Date().toLocaleDateString("vi-VN"),dir:f.dir});state.futures[i].st="Đã đóng";render()}
 
-// Auto-save to localStorage
+// ============ GOOGLE SHEETS SYNC ============
+const API_URL="https://script.google.com/macros/s/AKfycbytpr78v081VJqU0XvRAORu-PH7U07Vx87SGZNv1eQmeKEoN1VJOADixgxtiVSVNRmjbw/exec";
 const SAVE_KEY="maxs_portfolio_v2";
-function save(){try{localStorage.setItem(SAVE_KEY,JSON.stringify(state))}catch(e){}}
-function load(){try{const d=localStorage.getItem(SAVE_KEY);if(d){const s=JSON.parse(d);Object.assign(state,s);state.loading=false}}catch(e){}}
+let syncStatus="idle"; // idle, saving, loading, saved, error
+let lastSync=null;
+
+// Local save (backup)
+function saveLocal(){try{localStorage.setItem(SAVE_KEY,JSON.stringify(state))}catch(e){}}
+function loadLocal(){try{const d=localStorage.getItem(SAVE_KEY);if(d){const s=JSON.parse(d);Object.assign(state,s);state.loading=false}}catch(e){}}
+
+// Save to Google Sheets
+let saveTimer=null;
+function saveToCloud(){
+clearTimeout(saveTimer);
+saveTimer=setTimeout(async()=>{
+syncStatus="saving";renderSyncBadge();
+try{
+const payload={
+passkey:"maxs2026",
+settings:{totalVND:state.totalVND,spotPct:state.spotPct,rate:state.rate},
+spots:state.spots,futures:state.futures,history:state.history,lessons:state.lessons
+};
+const r=await fetch(API_URL+"?action=save",{method:"POST",body:JSON.stringify(payload),headers:{"Content-Type":"text/plain"}});
+const d=await r.json();
+if(d.success){syncStatus="saved";lastSync=new Date().toLocaleTimeString("vi-VN")}
+else{syncStatus="error"}
+}catch(e){syncStatus="error";console.error("Sync error:",e)}
+renderSyncBadge();
+},2000); // debounce 2s
+}
+
+// Load from Google Sheets
+async function loadFromCloud(){
+syncStatus="loading";renderSyncBadge();
+try{
+const r=await fetch(API_URL+"?action=load");
+const d=await r.json();
+if(d.success&&d.data){
+if(d.data.settings){
+state.totalVND=Number(d.data.settings.totalVND)||6e9;
+state.spotPct=Number(d.data.settings.spotPct)||70;
+state.rate=Number(d.data.settings.rate)||25500;
+}
+if(d.data.spots&&d.data.spots.length>0)state.spots=d.data.spots;
+if(d.data.futures&&d.data.futures.length>0)state.futures=d.data.futures;
+if(d.data.history)state.history=d.data.history;
+if(d.data.lessons)state.lessons=d.data.lessons;
+syncStatus="saved";lastSync=new Date().toLocaleTimeString("vi-VN");
+saveLocal();
+render();
+alert("✅ Đã tải dữ liệu từ Google Sheets!");
+}else{syncStatus="idle"}
+}catch(e){syncStatus="error";console.error("Load error:",e);
+alert("❌ Lỗi kết nối Google Sheets. Dùng dữ liệu local.")}
+renderSyncBadge();
+}
+
+function renderSyncBadge(){
+const el=document.getElementById("sync-badge");if(!el)return;
+const colors={idle:"#64748b",saving:"#f59e0b",loading:"#3b82f6",saved:"#10b981",error:"#ef4444"};
+const labels={idle:"⏸ Chưa đồng bộ",saving:"⏳ Đang lưu...",loading:"⏳ Đang tải...",saved:`✅ Đã lưu ${lastSync||''}`,error:"❌ Lỗi đồng bộ"};
+el.style.color=colors[syncStatus];el.textContent=labels[syncStatus];
+}
+
+// Export data as JSON file (backup)
+function exportData(){
+const data=JSON.stringify(state,null,2);
+const blob=new Blob([data],{type:"application/json"});
+const url=URL.createObjectURL(blob);
+const a=document.createElement("a");
+const date=new Date().toISOString().slice(0,10);
+a.href=url;a.download=`MAXS_Portfolio_Backup_${date}.json`;
+document.body.appendChild(a);a.click();document.body.removeChild(a);
+URL.revokeObjectURL(url);
+}
+
+// Import data from JSON file
+function importData(){
+const input=document.createElement("input");
+input.type="file";input.accept=".json";
+input.onchange=function(e){
+const file=e.target.files[0];if(!file)return;
+const reader=new FileReader();
+reader.onload=function(ev){
+try{
+const data=JSON.parse(ev.target.result);
+if(!data.spots||!data.futures){alert("❌ File không đúng định dạng MAXS Portfolio!");return}
+if(!confirm("⚠️ Nhập dữ liệu sẽ GHI ĐÈ toàn bộ dữ liệu hiện tại. Tiếp tục?")){return}
+Object.assign(state,data);state.loading=false;render();
+alert("✅ Nhập dữ liệu thành công!");
+}catch(err){alert("❌ Lỗi đọc file: "+err.message)}
+};
+reader.readAsText(file);
+};
+input.click();
+}
+
+// Reset all data
+function resetData(){
+if(!confirm("⚠️ Xoá toàn bộ dữ liệu và khôi phục mặc định?\nHành động này KHÔNG THỂ hoàn tác!"))return;
+localStorage.removeItem(SAVE_KEY);location.reload();
+}
+
 const origRender=render;
-render=function(){origRender();save()};
-load();render();
+render=function(){origRender();saveLocal();saveToCloud()};
+
+// Initial load: try cloud first, fallback to local
+loadLocal();render();
+// Auto-load from cloud on page open
+setTimeout(()=>{
+fetch(API_URL+"?action=load").then(r=>r.json()).then(d=>{
+if(d.success&&d.data&&(d.data.spots?.length>0||d.data.futures?.length>0)){
+if(d.data.settings){
+state.totalVND=Number(d.data.settings.totalVND)||state.totalVND;
+state.spotPct=Number(d.data.settings.spotPct)||state.spotPct;
+state.rate=Number(d.data.settings.rate)||state.rate;
+}
+if(d.data.spots&&d.data.spots.length>0)state.spots=d.data.spots;
+if(d.data.futures&&d.data.futures.length>0)state.futures=d.data.futures;
+if(d.data.history)state.history=d.data.history;
+if(d.data.lessons)state.lessons=d.data.lessons;
+syncStatus="saved";lastSync=new Date().toLocaleTimeString("vi-VN");
+saveLocal();origRender();renderSyncBadge();
+}
+}).catch(e=>{console.log("Cloud load skipped:",e)});
+},500);
 </script>
 </body>
 </html>
