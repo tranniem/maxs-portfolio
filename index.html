@@ -100,11 +100,20 @@ async function fetchPrices(){
 state.loading=true;render();
 try{
 const coins=new Set([...state.spots.map(s=>s.coin),...state.futures.map(f=>f.coin)]);
-const ids=[...coins].map(c=>GK[c]).filter(Boolean).join(",");
-if(!ids){state.loading=false;render();return}
-const r=await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd`);
-const d=await r.json();const p={};
-for(const[sym,id]of Object.entries(GK))if(d[id])p[sym]=d[id].usd;
+const symbols=[...coins].map(c=>c+"USDT");
+const promises=symbols.map(s=>
+fetch(`https://fapi.binance.com/fapi/v2/ticker/price?symbol=${s}`)
+.then(r=>r.json()).then(d=>({symbol:d.symbol,price:parseFloat(d.price)}))
+.catch(()=>null)
+);
+const results=await Promise.all(promises);
+const p={};
+results.forEach(r=>{
+if(r&&r.symbol&&r.price){
+const coin=r.symbol.replace("USDT","");
+p[coin]=r.price;
+}
+});
 state.prices=p;state.lastFetch=new Date().toLocaleTimeString("vi-VN");
 }catch(e){console.error(e)}
 state.loading=false;render();
