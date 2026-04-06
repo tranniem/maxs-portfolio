@@ -80,8 +80,8 @@ const COINS=["BTC","ETH","SOL","SUI","BNB","INJ","APT","AVAX","TIA","NEAR","TON"
 const EX=["Binance","OKX","Bybit","Hyperliquid","Coinbase","Bitget","MEXC","Khác"];
 const FIBO=["0.236","0.382","0.500","0.618","0.786","0.890","1.000","1.272","1.618","Khác"];
 const OT=["Buy Limit","Buy Stop","Sell Limit","Sell Stop","Market Buy","Market Sell"];
-const SS=["Chờ mua","Đang giữ","Đã dời về 0","Đã dời về dương","Đã bán"];
-const FS=["Chờ lệnh","Đang mở","Đã dời về 0","Đã dời về dương","Đã đóng"];
+const SS=["Chờ mua","Đang giữ","Đã dời về 0","Đã dời về dương","Chốt lời","Cắt lỗ"];
+const FS=["Chờ lệnh","Đang mở","Đã dời về 0","Đã dời về dương","Chốt lời","Cắt lỗ"];
 const LCATS=["Tâm lý","Kỹ thuật","Quản trị vốn","Kỷ luật","Chiến lược"];
 const CC=c=>({BTC:"#f7931a",ETH:"#627eea",SUI:"#4da2ff",SOL:"#9945ff",BNB:"#f0b90b",INJ:"#0082ff",XRP:"#00aae4",ADA:"#0033ad",AVAX:"#e84142",NEAR:"#00c08b",TON:"#0098ea",TRX:"#ff0013",APT:"#00bcd4",TIA:"#7b2ff7",SEI:"#9b1d1d",DOGE:"#c2a633",LINK:"#2a5ada",DOT:"#e6007a"}[c]||"#6366f1");
 let uid=100;const nid=()=>++uid;
@@ -93,10 +93,10 @@ const CYCLES=[
 {name:"Chu kỳ 1",start:"21/11/2011",end:"30/11/2013",bottom:2,peak:1163,gain:58050,note:"Khởi đầu BTC",days:740},
 {name:"Chu kỳ 2",start:"14/01/2015",end:"17/12/2017",bottom:152,peak:19783,gain:12915,note:"Altcoin bùng nổ",days:1068},
 {name:"Chu kỳ 3",start:"15/12/2018",end:"10/11/2021",bottom:3122,peak:69000,gain:2110,note:"DeFi + NFT",days:1061},
-{name:"Chu kỳ 4",start:"21/11/2022",end:"06/10/2025",bottom:15476,peak:109000,gain:604,note:"ETF + AI (đã kết thúc)",days:1050}
+{name:"Chu kỳ 4",start:"21/11/2022",end:"06/10/2025",bottom:15476,peak:126000,gain:714,note:"ETF + AI (đã kết thúc)",days:1050}
 ];
 
-let state={tab:"dashboard",totalVND:6e9,spotPct:70,rate:25500,p2pRate:0,prices:{},fundingRates:{},loading:false,lastFetch:null,
+let state={tab:"dashboard",totalVND:6e9,spotPct:70,rate:25500,p2pRate:0,prices:{},fundingRates:{},loading:false,lastFetch:null,hideSpotDone:false,hideFutDone:false,
 spots:[{id:nid(),coin:"BTC",ex:"Binance",pct:20,avg:0,qty:0,sell:0,st:"Chờ mua",fibo:"0.618",ot:"Buy Limit",cATH:"",cWeek:"",cWave:"",cSig:"",dATH:0,dWeek:0,dWave:0,dSig:0},
 {id:nid(),coin:"SUI",ex:"Binance",pct:50,avg:0,qty:0,sell:0,st:"Chờ mua",fibo:"0.618",ot:"Buy Limit",cATH:"",cWeek:"",cWave:"",cSig:"",dATH:0,dWeek:0,dWave:0,dSig:0},
 {id:nid(),coin:"SOL",ex:"Binance",pct:30,avg:0,qty:0,sell:0,st:"Chờ mua",fibo:"0.618",ot:"Buy Limit",cATH:"",cWeek:"",cWave:"",cSig:"",dATH:0,dWeek:0,dWave:0,dSig:0}],
@@ -116,11 +116,15 @@ const symbols=[...coins].map(c=>c+"USDT");
 const pPromises=symbols.map(s=>fetch(`https://fapi.binance.com/fapi/v2/ticker/price?symbol=${s}`).then(r=>r.json()).then(d=>({symbol:d.symbol,price:parseFloat(d.price)})).catch(()=>null));
 const fCoins=new Set(state.futures.map(f=>f.coin));
 const fPromises=[...fCoins].map(c=>fetch(`https://fapi.binance.com/fapi/v1/premiumIndex?symbol=${c}USDT`).then(r=>r.json()).then(d=>({coin:c,rate:parseFloat(d.lastFundingRate)})).catch(()=>null));
-const p2pPromise=fetch('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({asset:"USDT",fiat:"VND",merchantCheck:true,page:1,rows:5,tradeType:"SELL",payTypes:[]})}).then(r=>r.json()).catch(()=>null);
+const p2pPromise=fetch('https://www.binance.com/bapi/asset/v1/public/asset-service/product/currency?currency=VND').then(r=>r.json()).catch(()=>
+fetch('https://api.coingecko.com/api/v3/simple/price?ids=tether&vs_currencies=vnd').then(r=>r.json()).then(d=>({coingecko:true,rate:d?.tether?.vnd})).catch(()=>null)
+);
 const[pR,fR,p2p]=await Promise.all([Promise.all(pPromises),Promise.all(fPromises),p2pPromise]);
 const p={};pR.forEach(r=>{if(r?.symbol&&r.price)p[r.symbol.replace("USDT","")]=r.price});state.prices=p;
 const fr={};fR.forEach(r=>{if(r?.coin)fr[r.coin]=r.rate});state.fundingRates=fr;
-if(p2p?.data?.length>0){const ps=p2p.data.map(d=>parseFloat(d.adv.price));state.p2pRate=ps.reduce((a,b)=>a+b,0)/ps.length;state.rate=Math.round(state.p2pRate)}
+if(p2p?.data?.length>0){const ps=p2p.data.map(d=>parseFloat(d.adv?.price||d.price||0)).filter(x=>x>0);if(ps.length)state.p2pRate=ps.reduce((a,b)=>a+b,0)/ps.length;state.rate=Math.round(state.p2pRate)}
+else if(p2p?.coingecko&&p2p.rate){state.p2pRate=p2p.rate;state.rate=Math.round(p2p.rate)}
+else{try{const vr=await fetch('https://api.coingecko.com/api/v3/simple/price?ids=tether&vs_currencies=vnd').then(r=>r.json());if(vr?.tether?.vnd){state.p2pRate=vr.tether.vnd;state.rate=Math.round(state.p2pRate)}}catch(e){}}
 state.lastFetch=new Date().toLocaleTimeString("vi-VN");
 const sD=state.spots.map(calcSpot),fD=state.futures.map(calcFut);
 const eq=state.totalVND/state.rate+sD.reduce((a,s)=>a+s.pnl,0)+fD.reduce((a,f)=>a+f.pnl,0);
@@ -133,7 +137,7 @@ function calcSpot(s){
 const{rate:R,spotPct:SP,totalVND:TV,prices:P}=state;
 const spotVND=TV*SP/100,allocVND=spotVND*s.pct/100,allocUSDT=allocVND/R;
 const cp=P[s.coin]||0,value=s.qty*cp,cost=s.qty*s.avg;
-const pnl=s.st==="Đã bán"&&s.sell>0?s.qty*(s.sell-s.avg):value-cost;
+const pnl=(s.st==="Chốt lời"||s.st==="Cắt lỗ")&&s.sell>0?s.qty*(s.sell-s.avg):value-cost;
 const pnlPct=cost>0?(pnl/cost)*100:0;
 return{...s,allocVND,allocUSDT,cp,value,cost,pnl,pnlVND:pnl*R,pnlPct,allC:s.dATH&&s.dWeek&&s.dWave&&s.dSig};
 }
@@ -141,7 +145,7 @@ return{...s,allocVND,allocUSDT,cp,value,cost,pnl,pnlVND:pnl*R,pnlPct,allC:s.dATH
 function calcFut(f){
 const{rate:R,prices:P,fundingRates:FR}=state;
 const cp=P[f.coin]||0,capU=f.capVND/R,posSize=capU*f.lev,slAmt=capU*f.slPct/100;
-const exitP=f.st==="Đã đóng"&&f.sell>0?f.sell:cp;
+const exitP=(f.st==="Chốt lời"||f.st==="Cắt lỗ")&&f.sell>0?f.sell:cp;
 const pnl=f.entry>0?(f.qty>0?f.qty*(exitP-f.entry)*(f.dir==="Long"?1:-1):((exitP-f.entry)/f.entry)*posSize*(f.dir==="Long"?1:-1)):0;
 const pnlPct=capU>0&&f.entry>0?(pnl/capU)*100:0;
 const liq=f.entry>0&&f.lev>0?(f.dir==="Long"?f.entry*(1-.95/f.lev):f.entry*(1+.95/f.lev)):0;
@@ -150,7 +154,8 @@ const fundAmt=f.entry>0&&f.qty>0?f.qty*f.entry*fundRate:posSize*fundRate;
 const rr=f.entry>0&&f.sl>0&&f.tp>0?Math.abs(f.tp-f.entry)/Math.abs(f.entry-f.sl):0;
 let slEff="wait";
 if(f.st==="Đã dời về 0"||f.st==="Đã dời về dương")slEff="good";
-else if(f.st==="Đã đóng"&&f.sell>0&&f.entry>0){slEff=(f.dir==="Long"?f.sell<=f.sl:f.sell>=f.sl)?"bad":"good"}
+else if(f.st==="Cắt lỗ")slEff="bad";
+else if(f.st==="Chốt lời")slEff="good";
 return{...f,cp,capU,posSize,slAmt,pnl,pnlVND:pnl*R,pnlPct,calcLiq:liq,allC:f.dATH&&f.dWave&&f.dRev&&f.dSig,fundRate,fundAmt,fundDaily:fundAmt*3,slEff,rr};
 }
 
@@ -215,9 +220,12 @@ h+=`</div>`;
 }
 
 else if(T==="spot"){
-h+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><h2 style="font-size:16px;font-weight:700">💎 Spot — ${state.spots.length} mã</h2><div style="display:flex;gap:8px;align-items:center"><span style="font-size:12px;color:#64748b">${fV(spotVND)}=${fU(spotU)}</span><button class="btn-add" style="background:#10b981;color:#fff" onclick="state.spots.push({id:nid(),coin:'ETH',ex:'Binance',pct:0,avg:0,qty:0,sell:0,st:'Chờ mua',fibo:'0.618',ot:'Buy Limit',cATH:'',cWeek:'',cWave:'',cSig:'',dATH:0,dWeek:0,dWave:0,dSig:0});render()">+ Thêm</button></div></div>`;
-sData.forEach((s,i)=>{
-h+=`<div class="card coin-card" style="--c:${CC(s.coin)}"><div class="coin-header"><div style="display:flex;align-items:center;gap:10px"><select class="coin-name" style="width:90px;font-size:14px;font-weight:700" onchange="state.spots[${i}].coin=this.value;render()">${opts(COINS,s.coin)}</select><span class="val-sm green">${state.prices[s.coin]?fU(state.prices[s.coin]):'—'}</span>${s.allC?'<span class="ok-badge">✅ Đủ ĐK</span>':''}</div><div style="display:flex;gap:6px">${s.st==="Đang giữ"?`<button class="btn-close" onclick="sellSpot(${i})">Chốt lời</button>`:''}<button class="btn-del" onclick="if(state.spots.length>1){state.spots.splice(${i},1);render()}">✕</button></div></div>`;
+const spotDone=state.spots.filter(s=>s.st==="Chốt lời"||s.st==="Cắt lỗ").length;
+const spotActive=state.hideSpotDone?sData.filter(s=>s.st!=="Chốt lời"&&s.st!=="Cắt lỗ"):sData;
+h+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><h2 style="font-size:16px;font-weight:700">💎 Spot — ${state.spots.length} mã</h2><div style="display:flex;gap:8px;align-items:center">${spotDone>0?`<button class="btn-add" style="background:#374151;color:#94a3b8" onclick="state.hideSpotDone=!state.hideSpotDone;render()">${state.hideSpotDone?'👁 Hiện':'👁‍🗨 Ẩn'} đã đóng (${spotDone})</button>`:''}<span style="font-size:12px;color:#64748b">${fV(spotVND)}=${fU(spotU)}</span><button class="btn-add" style="background:#10b981;color:#fff" onclick="state.spots.push({id:nid(),coin:'ETH',ex:'Binance',pct:0,avg:0,qty:0,sell:0,st:'Chờ mua',fibo:'0.618',ot:'Buy Limit',cATH:'',cWeek:'',cWave:'',cSig:'',dATH:0,dWeek:0,dWave:0,dSig:0});render()">+ Thêm</button></div></div>`;
+spotActive.forEach((s)=>{
+const i=state.spots.indexOf(state.spots.find(x=>x.id===s.id));
+h+=`<div class="card coin-card" style="--c:${CC(s.coin)}"><div class="coin-header"><div style="display:flex;align-items:center;gap:10px"><select class="coin-name" style="width:90px;font-size:14px;font-weight:700" onchange="state.spots[${i}].coin=this.value;render()">${opts(COINS,s.coin)}</select><span class="val-sm green">${state.prices[s.coin]?fU(state.prices[s.coin]):'—'}</span>${s.allC?'<span class="ok-badge">✅ Đủ ĐK</span>':''}</div><div style="display:flex;gap:6px">${["Đang giữ","Đã dời về 0","Đã dời về dương"].includes(s.st)?`<button class="btn-close" onclick="sellSpot(${i},'Chốt lời')">Chốt lời</button><button class="btn-del" style="background:#ef4444" onclick="sellSpot(${i},'Cắt lỗ')">Cắt lỗ</button>`:''}<button class="btn-del" onclick="if(state.spots.length>1){state.spots.splice(${i},1);render()}">✕</button></div></div>`;
 h+=`<div class="coin-fields">`;
 [["Sàn","ex",EX],["Tỷ trọng %","pct"],["Fibo Entry","fibo",FIBO],["Loại lệnh","ot",OT],["Giá mua TB ($)","avg"],["Số lượng","qty"],["Giá bán ($)","sell"],["Trạng thái","st",SS]].forEach(([l,k,arr])=>{
 if(k==="pct"||k==="avg"||k==="qty"||k==="sell")h+=`<div><label class="lbl">${l}</label><input type="number" value="${s[k]||''}"${k==='sell'?' style="border-color:#f59e0b"':''} onchange="state.spots[${i}].${k}=Number(this.value);render()"></div>`;
@@ -233,10 +241,13 @@ h+=`<div class="pnl-row">${[["Giá trị",fU(s.value),"#3b82f6"],["PnL $",fU(s.p
 }
 
 else if(T==="future"){
-h+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><h2 style="font-size:16px;font-weight:700">⚡ Future — ${state.futures.length} mã</h2><div style="display:flex;gap:8px;align-items:center"><span style="font-size:12px;color:#64748b">${fV(futVND)}=${fU(futU)}</span><button class="btn-add" style="background:#f59e0b;color:#000" onclick="state.futures.push({id:nid(),coin:'ETH',ex:'Binance',capVND:6e8,lev:3,qty:0,dir:'Long',ot:'Buy Limit',fiboE:'0.786',fiboTP:'1.618',entry:0,sl:0,tp:0,sell:0,slPct:30,liq:0,fund:0,st:'Chờ lệnh',cATH:'',cWave:'',cRev:'',cSig:'',dATH:0,dWave:0,dRev:0,dSig:0});render()">+ Thêm</button></div></div>`;
-fData.forEach((f,i)=>{
+const futDone=state.futures.filter(f=>f.st==="Chốt lời"||f.st==="Cắt lỗ").length;
+const futActive=state.hideFutDone?fData.filter(f=>f.st!=="Chốt lời"&&f.st!=="Cắt lỗ"):fData;
+h+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><h2 style="font-size:16px;font-weight:700">⚡ Future — ${state.futures.length} mã</h2><div style="display:flex;gap:8px;align-items:center">${futDone>0?`<button class="btn-add" style="background:#374151;color:#94a3b8" onclick="state.hideFutDone=!state.hideFutDone;render()">${state.hideFutDone?'👁 Hiện':'👁‍🗨 Ẩn'} đã đóng (${futDone})</button>`:''}<span style="font-size:12px;color:#64748b">${fV(futVND)}=${fU(futU)}</span><button class="btn-add" style="background:#f59e0b;color:#000" onclick="state.futures.push({id:nid(),coin:'ETH',ex:'Binance',capVND:6e8,lev:3,qty:0,dir:'Long',ot:'Buy Limit',fiboE:'0.786',fiboTP:'1.618',entry:0,sl:0,tp:0,sell:0,slPct:30,liq:0,fund:0,st:'Chờ lệnh',cATH:'',cWave:'',cRev:'',cSig:'',dATH:0,dWave:0,dRev:0,dSig:0});render()">+ Thêm</button></div></div>`;
+futActive.forEach((f)=>{
+const i=state.futures.indexOf(state.futures.find(x=>x.id===f.id));
 const fr=state.fundingRates[f.coin];
-h+=`<div class="card coin-card" style="--c:${CC(f.coin)}"><div class="coin-header"><div style="display:flex;align-items:center;gap:10px"><select class="coin-name" style="width:90px;font-size:14px;font-weight:700" onchange="state.futures[${i}].coin=this.value;render()">${opts(COINS,f.coin)}</select><span class="val-sm green">${state.prices[f.coin]?fU(state.prices[f.coin]):'—'}</span>${f.allC?'<span class="ok-badge">✅ Đủ ĐK</span>':''}${fr!=null?`<span style="font-size:10px;color:${fr>=0?'#10b981':'#ef4444'}">FR:${(fr*100).toFixed(4)}%</span>`:''}</div><div style="display:flex;gap:6px">${f.st==="Đang mở"&&f.entry>0?`<button class="btn-close" onclick="closeFut(${i})">Đóng lệnh</button>`:''}<button class="btn-del" onclick="if(state.futures.length>1){state.futures.splice(${i},1);render()}">✕</button></div></div>`;
+h+=`<div class="card coin-card" style="--c:${CC(f.coin)}"><div class="coin-header"><div style="display:flex;align-items:center;gap:10px"><select class="coin-name" style="width:90px;font-size:14px;font-weight:700" onchange="state.futures[${i}].coin=this.value;render()">${opts(COINS,f.coin)}</select><span class="val-sm green">${state.prices[f.coin]?fU(state.prices[f.coin]):'—'}</span>${f.allC?'<span class="ok-badge">✅ Đủ ĐK</span>':''}${fr!=null?`<span style="font-size:10px;color:${fr>=0?'#10b981':'#ef4444'}">FR:${(fr*100).toFixed(4)}%</span>`:''}</div><div style="display:flex;gap:6px">${["Đang mở","Đã dời về 0","Đã dời về dương"].includes(f.st)&&f.entry>0?`<button class="btn-close" onclick="closeFut(${i},'Chốt lời')">Chốt lời</button><button class="btn-del" style="background:#ef4444" onclick="closeFut(${i},'Cắt lỗ')">Cắt lỗ</button>`:''}<button class="btn-del" onclick="if(state.futures.length>1){state.futures.splice(${i},1);render()}">✕</button></div></div>`;
 h+=`<div class="coin-fields">`;
 [["Sàn","ex",EX],["Vốn VND","capVND",null,"number"],["Vốn $","_capU"],["Leverage","lev",null,"number"],["KL coin","qty",null,"number"],["Hướng","dir",["Long","Short"]],["Loại lệnh","ot",OT],["Fibo Entry","fiboE",FIBO],["Fibo TP","fiboTP",FIBO],["Entry $","entry",null,"number"],["SL $","sl",null,"number"],["TP $","tp",null,"number"],["Giá đóng $","sell",null,"number"],["SL %","slPct",null,"number"],["Trạng thái","st",FS]].forEach(([l,k,arr,t])=>{
 if(k==="_capU"){h+=`<div><label class="lbl">${l}</label><div style="font-size:11px;font-weight:600;padding:6px 0">${fU(f.capU)}</div></div>`;return}
@@ -283,8 +294,8 @@ h+=`</div><div class="footer">MAXS Portfolio Manager v3 — Triết lý đầu t
 document.getElementById("app").innerHTML=h;
 }
 
-function sellSpot(i){const s=calcSpot(state.spots[i]);if(s.avg===0)return;const exit=s.sell>0?s.sell:s.cp;const pnl=s.qty*(exit-s.avg);const pnlPct=s.cost>0?(pnl/s.cost)*100:0;state.history.push({id:nid(),type:"Spot",coin:s.coin,entry:s.avg,exit,pnl,pnlPct,date:new Date().toLocaleDateString("vi-VN"),dir:"Long",rr:0,slEff:"good"});state.spots[i].st="Đã bán";render()}
-function closeFut(i){const f=calcFut(state.futures[i]);if(f.entry===0)return;const exit=f.sell>0?f.sell:f.cp;const pnl=f.qty>0?f.qty*(exit-f.entry)*(f.dir==="Long"?1:-1):((exit-f.entry)/f.entry)*f.posSize*(f.dir==="Long"?1:-1);const pnlPct=f.capU>0?(pnl/f.capU)*100:0;const rr=f.sl>0&&f.tp>0?Math.abs(f.tp-f.entry)/Math.abs(f.entry-f.sl):0;state.history.push({id:nid(),type:"Future",coin:f.coin,entry:f.entry,exit,pnl,pnlPct,date:new Date().toLocaleDateString("vi-VN"),dir:f.dir,rr,slEff:pnl<0?"bad":"good"});state.futures[i].st="Đã đóng";render()}
+function sellSpot(i,st){const s=calcSpot(state.spots[i]);if(s.avg===0)return;const exit=s.sell>0?s.sell:s.cp;const pnl=s.qty*(exit-s.avg);const pnlPct=s.cost>0?(pnl/s.cost)*100:0;state.history.push({id:nid(),type:"Spot",coin:s.coin,entry:s.avg,exit,pnl,pnlPct,date:new Date().toLocaleDateString("vi-VN"),dir:"Long",rr:0,slEff:st==="Cắt lỗ"?"bad":"good"});state.spots[i].st=st;render()}
+function closeFut(i,st){const f=calcFut(state.futures[i]);if(f.entry===0)return;const exit=f.sell>0?f.sell:f.cp;const pnl=f.qty>0?f.qty*(exit-f.entry)*(f.dir==="Long"?1:-1):((exit-f.entry)/f.entry)*f.posSize*(f.dir==="Long"?1:-1);const pnlPct=f.capU>0?(pnl/f.capU)*100:0;const rr=f.sl>0&&f.tp>0?Math.abs(f.tp-f.entry)/Math.abs(f.entry-f.sl):0;state.history.push({id:nid(),type:"Future",coin:f.coin,entry:f.entry,exit,pnl,pnlPct,date:new Date().toLocaleDateString("vi-VN"),dir:f.dir,rr,slEff:st==="Cắt lỗ"?"bad":"good"});state.futures[i].st=st;render()}
 
 const API_URL="https://script.google.com/macros/s/AKfycbytpr78v081VJqU0XvRAORu-PH7U07Vx87SGZNv1eQmeKEoN1VJOADixgxtiVSVNRmjbw/exec";
 const SAVE_KEY="maxs_portfolio_v3";let syncStatus="idle",lastSync=null;
